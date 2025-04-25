@@ -16,6 +16,7 @@ from src.utils.text_utils import TextUtils
 class Scraper:
     def __init__(self):
         log_file = f'logs//scrapping-{datetime.now().strftime('%y%m%d%H%M%S')}.log'
+        Path('logs').mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=log_file, level=logging.DEBUG, 
                             format='%(asctime)s %(levelname)s %(name)s %(message)s')
         self.logger=logging.getLogger(__name__)
@@ -78,7 +79,8 @@ class Scraper:
                 event = Event(event_id, title, desc, starting_date, ending_date, prize_pool, location)
             assert KeyError
         except Exception as ex:
-            print("[ERROR]", ex)
+            self.logger.error(traceback.format_exc())
+            print("[ERROR]", traceback.format_exc())
             
         return event
     
@@ -129,6 +131,8 @@ class Scraper:
                 for i in range(0, len(html_match_overviews)):
                     html_match_overviews_header = html_match_overviews[i].find('div', class_='vm-stats-game-header')
                     match_map_id = html_match_overviews[i].get('data-game-id') if not None else f"{match_id}{i}"
+                    # Scrap the only one with a game score in the ('div', class_='vm-stats-game-header')
+                    # Ignore the tab summary
                     if html_match_overviews_header:
                         
                         html_score_atk = html_match_overviews_header.find_all('span', class_='mod-t')
@@ -149,7 +153,11 @@ class Scraper:
                         html_map_name = html_match_overviews_header.find('div', class_='map').find('span')
                         map_name = TextUtils.clean_str(html_map_name.text.replace('PICK', '') if not None else '')
                         
-                        map_overview = MatchMapOverview(match_map_id, match_id , team1_id, team1_name, match_team1_score, team1_atk_won, team1_def_won, team2_id, team2_name, match_team2_score, team2_atk_won, team2_def_won, map_name)
+                        
+                        html_team1_pick = html_match_overviews_header.find('div', class_='map').find('span', class_='mod-1')
+                        html_team2_pick = html_match_overviews_header.find('div', class_='map').find('span', class_='mod-2')
+                        team_id_map_pick = team1_id if html_team1_pick else team2_id if html_team2_pick else -1
+                        map_overview = MatchMapOverview(match_map_id, match_id , team1_id, team1_name, match_team1_score, team1_atk_won, team1_def_won, team2_id, team2_name, match_team2_score, team2_atk_won, team2_def_won, map_name, team_id_map_pick)
                         match_map_overviews.append(map_overview)
             
         except Exception as ex:
@@ -166,54 +174,75 @@ class Scraper:
             response = requests.get(match_url)
             soup = BeautifulSoup(response.content, 'html.parser')
             
+            # Match will have 03 to 05 games
             html_match_overviews = soup.find_all('div', class_='vm-stats-game')
             for i in range(0, len(html_match_overviews)):
+                # Scrap the only one with a game score in the ('div', class_='vm-stats-game-header')
                 html_match_overviews_header = html_match_overviews[i].find('div', class_='vm-stats-game-header')
                 match_map_id = html_match_overviews[i].get('data-game-id') if not None else f"{match_id}{i}"
                 if html_match_overviews_header:
                     html_tables = html_match_overviews[i].find_all('table')
                     for table in html_tables:
                         html_trs = table.find_all('tr')
+                        # Ignoring table header
                         if len(html_trs) > 5:
                             html_trs = html_trs[1:]
                         for tr in html_trs:
                             html_tds = tr.find_all('td')
                             
-                            # Assuming the table will always have 14 cols
+                            # Assuming the table will have 14 cols containing the data
                             if len(html_tds) == 14:
                                 # Player info
                                 html_player = html_tds[0].find('a')
-                                player_id = html_player.get('href').split('/')[2] if not None else -1
-                                player_name = TextUtils.clean_str(html_player.find('div').text)
-                                player_team = TextUtils.clean_str(html_player.find_all('div')[-1].text)
+                                player_url = html_player.get('href') if html_player is not None else None
+                                player_id = player_url.split('/')[2] if player_url is not None else -1
+                                player_name = TextUtils.clean_str(html_player.find('div').text if html_player is not None else 'Guest')
+                                player_team = TextUtils.clean_str(html_player.find_all('div')[-1].text if html_player is not None else 'Showcase team')
                                 
                                 html_player_agent = html_tds[1].find('img')
                                 player_agent = TextUtils.clean_str(html_player_agent.get('title') if html_player_agent is not None else '' )
+
                                 # Player stats
                                 # Assuming the col 2 to 14 in the table is structured as follow:
                                 # rating_20, average_combat_score, kills, deaths, assists, kd_ratio, kill_assits_trade_surival_perc, average_dmg_perround, headshot_percentages, first_kills, first_deaths, first_kill_deaths_ratio
-                                atk_arr = []
-                                def_arr = []
+
+                                only_both = True
+                                arr_all_side = []
+                                # Every cell should have 3 span : atk stat, def stat and both
+                                # Count every span for each cell
                                 for i in range(2, 14):
-                                    t, ct = html_tds[i].find_all('span', class_=['mod-t', 'mod-ct'])
-                                    atk_arr.append(TextUtils.clean_float(t.text if not None else 0))
-                                    def_arr.append(TextUtils.clean_float(ct.text if not None else 0))
-                                
-                                atk_rating_20, atk_average_combat_score, atk_kills, atk_deaths, atk_assists, atk_kd_ratio, atk_kill_assits_trade_surival_perc, atk_average_dmg_perround, atk_headshot_percentages, atk_first_kills, atk_first_deaths, atk_first_kill_deaths_ratio = atk_arr
-                                
-                                atk_stat = MatchMapPlayerStats(match_id, match_map_id, player_id, player_name, player_team, player_agent, atk_rating_20, atk_average_combat_score, atk_kills, atk_deaths, atk_assists, atk_kd_ratio, atk_kill_assits_trade_surival_perc, atk_average_dmg_perround, atk_headshot_percentages, atk_first_kills, atk_first_deaths, atk_first_kill_deaths_ratio, 'ATK')
-                                match_player_data.append(atk_stat)
-                                
-                                def_rating_20, def_average_combat_score, def_kills, def_deaths, def_assists, def_kd_ratio, def_kill_assits_trade_surival_perc, def_average_dmg_perround, def_headshot_percentages, def_first_kills, def_first_deaths, def_first_kill_deaths_ratio = def_arr 
-                                def_stat = MatchMapPlayerStats(match_id, match_map_id, player_id, player_name, player_team, player_agent, def_rating_20, def_average_combat_score, def_kills, def_deaths, def_assists, def_kd_ratio, def_kill_assits_trade_surival_perc, def_average_dmg_perround, def_headshot_percentages, def_first_kills, def_first_deaths, def_first_kill_deaths_ratio, 'DEF')
-                                match_player_data.append(def_stat)
-                                
-                                break
-                                
-                                
-                                
-                    
-                
+                                    arr_all_side.append( len(html_tds[i].find_all('span', class_='side')) )
+                                # if one cell only have the both stat, use that else use atk and def
+                                contains_all_side = len(set(arr_all_side)) == 1
+
+                                if contains_all_side:
+                                    atk_arr = []
+                                    def_arr = []
+                                    for i in range(2, 14):
+                                        t, ct = html_tds[i].find_all('span', class_=['mod-t', 'mod-ct'])
+                                        atk_arr.append(TextUtils.clean_float(t.text if not None else 0))
+                                        def_arr.append(TextUtils.clean_float(ct.text if not None else 0))
+
+                                    atk_rating_20, atk_average_combat_score, atk_kills, atk_deaths, atk_assists, atk_kd_ratio, atk_kill_assits_trade_surival_perc, atk_average_dmg_perround, atk_headshot_percentages, atk_first_kills, atk_first_deaths, atk_first_kill_deaths_ratio = atk_arr
+                                    
+                                    atk_stat = MatchMapPlayerStats(match_id, match_map_id, player_id, player_name, player_team, player_agent, atk_rating_20, atk_average_combat_score, atk_kills, atk_deaths, atk_assists, atk_kd_ratio, atk_kill_assits_trade_surival_perc, atk_average_dmg_perround, atk_headshot_percentages, atk_first_kills, atk_first_deaths, atk_first_kill_deaths_ratio, 'ATK')
+                                    match_player_data.append(atk_stat)
+                                    
+                                    def_rating_20, def_average_combat_score, def_kills, def_deaths, def_assists, def_kd_ratio, def_kill_assits_trade_surival_perc, def_average_dmg_perround, def_headshot_percentages, def_first_kills, def_first_deaths, def_first_kill_deaths_ratio = def_arr 
+                                    
+                                    def_stat = MatchMapPlayerStats(match_id, match_map_id, player_id, player_name, player_team, player_agent, def_rating_20, def_average_combat_score, def_kills, def_deaths, def_assists, def_kd_ratio, def_kill_assits_trade_surival_perc, def_average_dmg_perround, def_headshot_percentages, def_first_kills, def_first_deaths, def_first_kill_deaths_ratio, 'DEF')
+                                    match_player_data.append(def_stat)
+                                else:
+                                    both_arr = []
+                                    for i in range(2, 14):
+                                        both = html_tds[i].find('span', class_=['mod-both'])
+                                        both_arr.append(TextUtils.clean_float(both.text if both is not None else 0))
+
+                                    both_rating_20, both_average_combat_score, both_kills, both_deaths, both_assists, both_kd_ratio, both_kill_assits_trade_surival_perc, both_average_dmg_perround, both_headshot_percentages, both_first_kills, both_first_deaths, both_first_kill_deaths_ratio = both_arr
+                                    
+                                    both_stat = MatchMapPlayerStats(match_id, match_map_id, player_id, player_name, player_team, player_agent, both_rating_20, both_average_combat_score, both_kills, both_deaths, both_assists, both_kd_ratio, both_kill_assits_trade_surival_perc, both_average_dmg_perround, both_headshot_percentages, both_first_kills, both_first_deaths, both_first_kill_deaths_ratio, 'BOTH')
+                                    match_player_data.append(both_stat)
+
         except Exception as ex:
             self.logger.error(traceback.format_exc())
             print("[ERROR]", traceback.format_exc())

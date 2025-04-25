@@ -12,6 +12,7 @@ load_dotenv()
 output_dir = os.getenv('OUTPUT_BASE_DIRECTORY')
 Path(output_dir).mkdir(parents=True, exist_ok=True)
 
+# Event and matches urls directory
 events_url_dir = os.getenv('VCT_EVENTS_URLS_DIRECTORY')
 matches_url_dir = os.getenv('VCT_MATCHES_URLS_DIRECTORY')
 Path(matches_url_dir).mkdir(parents=True, exist_ok=True)
@@ -31,6 +32,7 @@ sc = Scraper()
 # Scrapping starting time
 starting_time = time.time()
 
+# Looping thru vct year (2021 to Current year)
 for year in range(vct_debut_year, vct_curr_year + 1):
     event_urls_filename = f"{events_url_dir}/vct-{year}-events.txt"
     match_filename = f"{matches_url_dir}/vct-{year}-matches.txt"

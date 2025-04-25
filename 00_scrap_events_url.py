@@ -10,7 +10,7 @@ load_dotenv()
 # Output directory
 ouput_dir = os.getenv('OUTPUT_BASE_DIRECTORY')
 Path(ouput_dir).mkdir(parents=True, exist_ok=True)
-
+# Event urls directory
 events_url_dir = os.getenv('VCT_EVENTS_URLS_DIRECTORY')
 Path(events_url_dir).mkdir(parents=True, exist_ok=True)
 

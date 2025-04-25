@@ -1,6 +1,6 @@
 class MatchMapOverview:
     
-    def __init__(self, _id, match_id, team1_id, team1_name, team1_score, team1_atk_won, team1_def_won, team2_id, team2_name, team2_score, team2_atk_won, team2_def_won, map_name):
+    def __init__(self, _id, match_id, team1_id, team1_name, team1_score, team1_atk_won, team1_def_won, team2_id, team2_name, team2_score, team2_atk_won, team2_def_won, map_name, team_id_map_pick):
         self._id = _id
         self.match_id = match_id
         
@@ -20,5 +20,6 @@ class MatchMapOverview:
         
         # Map
         self.map_name = map_name
+        self.team_id_map_pick = team_id_map_pick
         
         

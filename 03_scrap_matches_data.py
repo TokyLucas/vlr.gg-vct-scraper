@@ -32,6 +32,7 @@ vct_debut_year = int(os.getenv('VCT_DEBUT_YEAR'))
 vct_curr_year = datetime.now().year
 
 sc = Scraper()
+# current year to debut year (Recent year contains less matches)
 year_range = range(vct_curr_year , vct_debut_year -1 , -1)
 
 # Choose which year to scarp
@@ -43,45 +44,50 @@ for year in year_range:
 # Scrapping starting time
 starting_time = time.time()
 
-# Looping thru vct year (2021 to Current year)
+# Looping thru vct year_range
 for year in year_range:
     # Reading vct matches file
     matches_url_filename = f"{matches_url_dir}/vct-{year}-matches.txt"
-    with open(matches_url_filename, "r", encoding='utf-8') as matches_url_file:
-        match_urls = matches_url_file.readlines()
-        match_data_filename = f"{matches_datasets_dir}/vct-{year}-matches-data.csv"
-        if os.path.isfile(match_data_filename):
-            os.remove(match_data_filename)
+    
+    if os.path.isfile(matches_url_filename):
+        with open(matches_url_filename, "r", encoding='utf-8') as matches_url_file:
+            match_urls = matches_url_file.readlines()
+            match_data_filename = f"{matches_datasets_dir}/vct-{year}-matches-data.csv"
+            match_map_overviews_data_filename = f"{match_map_ovw_datasets_dir}/vct-{year}-match-overviews-data.csv"
             
-        match_map_overviews_data_filename = f"{match_map_ovw_datasets_dir}/vct-{year}-match-overviews-data.csv"
-        
-        if overwrite_dialogs[year].lower() != 'n':
-            if os.path.isfile(match_map_overviews_data_filename):
-                os.remove(match_map_overviews_data_filename)
+            # Check if overwriting a year datasets else skip
+            if overwrite_dialogs[year].lower() != 'n':
+                if os.path.isfile(match_data_filename):
+                    os.remove(match_data_filename)
+                if os.path.isfile(match_map_overviews_data_filename):
+                    os.remove(match_map_overviews_data_filename)
+                # Writing match_data_file
+                with open(match_data_filename, "a", newline='', encoding='utf-8') as match_data_file:
+                    for match_url in match_urls:
+                        # Scraping data from each urls
+                        match_url = f"{vlrgg_base_url}{match_url.replace('\n', '')}"
+                        print("[INFO]", f"Scraping match data from {match_url}")
+                        match_data, match_map_overviews_data = sc.scrap_match_data(match_url)
+                        print("\t[INFO]", f"Writing match data into {match_data_filename}")
+                        if match_data:
+                            csvwriter = csv.writer(match_data_file)
+                            csvwriter.writerow(match_data.__dict__.values())
                             
-            with open(match_data_filename, "a", newline='', encoding='utf-8') as match_data_file:
-                for match_url in match_urls:
-                    match_url = f"{vlrgg_base_url}{match_url.replace('\n', '')}"
-                    print("[INFO]", f"Scraping match data from {match_url}")
-                    match_data, match_map_overviews_data = sc.scrap_match_data(match_url)
-                    print("[INFO]", f"Writing match data into {match_data_filename}")
-                    if match_data:
-                        csvwriter = csv.writer(match_data_file)
-                        csvwriter.writerow(match_data.__dict__.values())
-
-                        if len(match_map_overviews_data) > 0:
-                            with open(match_map_overviews_data_filename, "a", newline='', encoding='utf-8') as match_map_overviews_data_file:
+                            # Writing match_map_overviews_data
+                            if len(match_map_overviews_data) > 0:
+                                with open(match_map_overviews_data_filename, "a", newline='', encoding='utf-8') as match_map_overviews_data_file:
+                                    print("\t[INFO]", f"Writing match overviews into {match_map_overviews_data_filename}")
+                                    print("")
+                                    for m_ovws in match_map_overviews_data:
+                                        csvwriter = csv.writer(match_map_overviews_data_file)
+                                        csvwriter.writerow(m_ovws.__dict__.values())
                                 
-                                print("\t[INFO]", f"Writing match overviews into {match_map_overviews_data_filename}")
-                                print("")
-                                for m_ovws in match_map_overviews_data:
-                                    csvwriter = csv.writer(match_map_overviews_data_file)
-                                    csvwriter.writerow(m_ovws.__dict__.values())
-                            
-                            match_map_overviews_data_file.close()
-                    
-            match_data_file.close()
-    matches_url_file.close()
+                                match_map_overviews_data_file.close()
+                        
+                match_data_file.close()
+        matches_url_file.close()
+    else:
+        print(f"URLs file {matches_url_filename} does not exist. Try running 01_scrap_matches_url.py")
 
 # Scrapping ending time
 ending_time = time.time()
